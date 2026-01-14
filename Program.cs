@@ -8,3 +8,8 @@ ORM.CreateTable(typeof(Person));
 Console.WriteLine("Table successfully created");
 
 List<Person> persons = ORM.Select<Person>();
+
+foreach (Person person in persons)
+{
+    Console.WriteLine(person.FirstName);
+}

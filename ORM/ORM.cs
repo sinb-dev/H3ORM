@@ -28,6 +28,10 @@ public static class ORM
                     Type sqlFieldType = dataReader.GetFieldType(dataReaderColumn);
                     if (property.PropertyType != sqlFieldType)
                         throw new Exception($"Property {property.Name} does not match datatype {dataReader.GetFieldType(dataReaderColumn)}");
+                    
+                    if (dataReader.IsDBNull(dataReaderColumn))
+                        continue;
+                    
                     if (property.PropertyType == typeof(string))
                     {
                         property.SetValue(instance, dataReader.GetString(dataReaderColumn));
@@ -36,6 +40,11 @@ public static class ORM
                     {
                         property.SetValue(instance, dataReader.GetInt32(dataReaderColumn));
                     }
+                    else if (property.PropertyType == typeof(long))
+                    {
+                        property.SetValue(instance, dataReader.GetInt64(dataReaderColumn));
+                    }
+                    dataReaderColumn++;
                 }
                 list.Add(instance);
             }
@@ -124,7 +133,7 @@ public static class ORM
     {
         if (type == typeof(string))
             return "TEXT";
-        else if (type == typeof(int))
+        else if (type == typeof(int) || type == typeof(long) || type == typeof(short))
             return "INTEGER";
         else if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
         {
