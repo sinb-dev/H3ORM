@@ -51,7 +51,7 @@ public static class ORM
         }
         return list;
     }
-    static void ExecuteStatement(string sql, Dictionary<string, object?>? parameters = null)
+    static object? ExecuteStatement(string sql, Dictionary<string, object?>? parameters = null)
     {
         using SqliteConnection connection = new(connectionString);
         connection.Open();
@@ -64,7 +64,7 @@ public static class ORM
                 command.Parameters.AddWithValue(column, value);
             }
         }
-        command.ExecuteNonQuery();
+        return command.ExecuteScalar();
     }
 
     public static bool Insert(object o)
@@ -74,17 +74,31 @@ public static class ORM
         List<string> columns = new();
         List<string> values = new();
         Dictionary<string, object?> parameters = new();
+        PropertyInfo? primaryKeyProperty = null;
         foreach (PropertyInfo propertyInfo in type.GetProperties())
         {
+            if (IsPrimaryKeyCandidate(propertyInfo.Name) && primaryKeyProperty == null)
+            {
+                primaryKeyProperty = propertyInfo;
+                continue; //Avoid setting primary key, let DB set it.
+            }
             columns.Add(propertyInfo.Name);
             values.Add($"@{propertyInfo.Name}");
             parameters.Add(propertyInfo.Name, propertyInfo.GetValue(o)?.ToString() ?? "");
         }
         sql.Append($"INSERT INTO {type.Name}");
         sql.Append($"(`{string.Join("`,`",columns)}`)");
-        sql.Append("VALUES ");
+        sql.Append(" VALUES ");
         sql.Append($"({string.Join(",", values)})");
         ExecuteStatement(sql.ToString(), parameters);
+
+        if (primaryKeyProperty != null)
+        {
+            if (ExecuteStatement("SELECT last_insert_rowid()") is long lastInsertId)
+            {
+                primaryKeyProperty.SetValue(o, lastInsertId);
+            }
+        }
         return true;
     }
     /// <summary>
