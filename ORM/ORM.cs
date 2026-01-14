@@ -17,6 +17,26 @@ public static class ORM
         command.ExecuteNonQuery();
     }
 
+    public static bool Insert(object o)
+    {
+        Type type = o.GetType();
+        StringBuilder sql = new();
+        List<string> columns = new();
+        List<string> values = new();
+        Dictionary<string, object?> parameters = new();
+        foreach (PropertyInfo propertyInfo in type.GetProperties())
+        {
+            columns.Add(propertyInfo.Name);
+            values.Add($"@{propertyInfo.Name}");
+            parameters.Add(propertyInfo.Name, propertyInfo.GetValue(o)?.ToString() ?? "");
+        }
+        sql.Append($"INSERT INTO {type.Name}");
+        sql.Append($"(`{string.Join("`,`",columns)}`)");
+        sql.Append("VALUES ");
+        sql.Append($"({string.Join(",", values)})");
+        ExecuteStatement(sql.ToString(), parameters);
+        return true;
+    }
     /// <summary>
     /// Creates a table of the given type
     /// </summary>
