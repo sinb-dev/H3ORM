@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using Microsoft.Data.Sqlite;
@@ -121,15 +122,57 @@ public static class ORM
         return false;
     }
 
-
-    public static List<T> Select<T>()
+    public static List<T> Select<T>(string where)
     {
         Type type = typeof(T);
         StringBuilder sql = new();
         PropertyInfo[] properties = type.GetProperties();
-        string propertyList = string.Join("`,`",properties.Select(p => p.Name).ToList());
-        sql.Append($"SELECT `{propertyList}` FROM {type.Name}");
+        List<string> columns = properties.Select(p => p.Name).ToList();
+
+        string propertyList = string.Join("`,`", columns);
+        sql.Append($"SELECT `{propertyList}` FROM {type.Name} ");
+        sql.Append($"WHERE {where}");
+
         return ExecuteQuery<T>(sql.ToString());
+    }
+    public static List<T> Select<T>(Expression<Func<T, bool>> expr)
+    {
+        Type type = typeof(T);
+        StringBuilder sql = new();
+        PropertyInfo[] properties = type.GetProperties();
+        List<string> columns = properties.Select(p => p.Name).ToList();
+
+        string propertyList = string.Join("`,`", columns);
+        sql.Append($"SELECT `{propertyList}` FROM {type.Name} ");
+        sql.Append(Where(expr));
+        return ExecuteQuery<T>(sql.ToString());
+    }
+    public static string Where(string str)
+    {
+        return $"WHERE {str}";
+    }
+    public static string Where<T>(Expression<Func<T, bool>> expr)
+    {
+        string sql = "WHERE ";
+        if (expr.Body is BinaryExpression binaryExpression)
+        {
+            sql += binaryExpression.Left;
+            if (binaryExpression.NodeType == ExpressionType.Equal)
+            {
+                sql += "=";
+            } 
+            else if (binaryExpression.NodeType == ExpressionType.NotEqual)
+            {
+                sql += "!=";   
+            }
+            else if (binaryExpression.NodeType == ExpressionType.LessThan)
+            {
+                sql += "<";   
+            }
+            sql += binaryExpression.Right;
+        }
+
+        return sql;
     }
     public static void Update(object record)
     {

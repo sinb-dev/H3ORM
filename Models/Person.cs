@@ -1,3 +1,4 @@
+using H3ORM.ORM;
 namespace H3ORM.Models;
 public class Person
 {

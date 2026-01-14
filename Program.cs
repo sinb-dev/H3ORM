@@ -7,8 +7,8 @@ Console.WriteLine("Creating table for persons");
 ORM.CreateTable(typeof(Person));
 Console.WriteLine("Table successfully created");
 
-List<Person> persons = ORM.Select<Person>();
-
+string findName = "Konrad";
+List<Person> persons = ORM.Select<Person>("FirstName = 'Konrad' and Id < 4");
 foreach (Person person in persons)
 {
     Console.WriteLine(person.FirstName);
