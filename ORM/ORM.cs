@@ -51,15 +51,56 @@ public static class ORM
         }
         return list;
     }
-    static void ExecuteStatement(string sql)
+    static object? ExecuteStatement(string sql, Dictionary<string, object?>? parameters = null)
     {
         using SqliteConnection connection = new(connectionString);
         connection.Open();
         SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
-        command.ExecuteNonQuery();
+        if (parameters != null)
+        {
+            foreach ((string column, object? value) in parameters)
+            {
+                command.Parameters.AddWithValue(column, value);
+            }
+        }
+        return command.ExecuteScalar();
     }
 
+    public static bool Insert(object o)
+    {
+        Type type = o.GetType();
+        StringBuilder sql = new();
+        List<string> columns = new();
+        List<string> values = new();
+        Dictionary<string, object?> parameters = new();
+        PropertyInfo? primaryKeyProperty = null;
+        foreach (PropertyInfo propertyInfo in type.GetProperties())
+        {
+            if (IsPrimaryKeyCandidate(propertyInfo.Name) && primaryKeyProperty == null)
+            {
+                primaryKeyProperty = propertyInfo;
+                continue; //Avoid setting primary key, let DB set it.
+            }
+            columns.Add(propertyInfo.Name);
+            values.Add($"@{propertyInfo.Name}");
+            parameters.Add(propertyInfo.Name, propertyInfo.GetValue(o)?.ToString() ?? "");
+        }
+        sql.Append($"INSERT INTO {type.Name}");
+        sql.Append($"(`{string.Join("`,`",columns)}`)");
+        sql.Append(" VALUES ");
+        sql.Append($"({string.Join(",", values)})");
+        ExecuteStatement(sql.ToString(), parameters);
+
+        if (primaryKeyProperty != null)
+        {
+            if (ExecuteStatement("SELECT last_insert_rowid()") is long lastInsertId)
+            {
+                primaryKeyProperty.SetValue(o, lastInsertId);
+            }
+        }
+        return true;
+    }
     /// <summary>
     /// Creates a table of the given type
     /// </summary>
@@ -89,7 +130,27 @@ public static class ORM
         string propertyList = string.Join("`,`",properties.Select(p => p.Name).ToList());
         sql.Append($"SELECT `{propertyList}` FROM {type.Name}");
         return ExecuteQuery<T>(sql.ToString());
-
+    }
+    public static void Update(object record)
+    {
+        StringBuilder sql = new();
+        Type type = record.GetType();
+        Dictionary<string, object?> parameters = new();
+        PropertyInfo? primaryKeyProperty = null;
+        sql.Append($"UPDATE {type.Name} SET ");
+        foreach (PropertyInfo propertyInfo in type.GetProperties())
+        {
+            if (IsPrimaryKeyCandidate(propertyInfo.Name) && primaryKeyProperty == null)
+                primaryKeyProperty = propertyInfo;
+            sql.Append($"`{propertyInfo.Name}`=@{propertyInfo.Name},");
+            parameters.Add(propertyInfo.Name, propertyInfo.GetValue(record));
+        }
+        sql = new(sql.ToString().Trim(',', ' '));
+        if (primaryKeyProperty == null)
+            throw new Exception($"Cannot update: Missing primary key on type {type.Name}");
+    
+        sql.Append($"WHERE {primaryKeyProperty.Name}=@Id");
+        ExecuteStatement(sql.ToString(), parameters);
     }
     /// <summary>
     /// Generates CREATE TABLE sql by reflecting a type
