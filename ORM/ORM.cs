@@ -7,13 +7,63 @@ public static class ORM
 {
     static string connectionString = "";
     public static void SetConnectionString(string connStr) => connectionString = connStr;
-
-    static void ExecuteStatement(string sql)
+    public static List<T> ExecuteQuery<T>(string sql)
     {
         using SqliteConnection connection = new(connectionString);
         connection.Open();
         SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
+        SqliteDataReader dataReader = command.ExecuteReader();
+
+        List<T> list = new();
+        while (dataReader.Read())
+        {
+            T? instance = (T?) Activator.CreateInstance(typeof(T));
+            if (instance != null)
+            {
+                PropertyInfo[] properties = instance.GetType().GetProperties();
+                int dataReaderColumn = 0;
+                foreach (PropertyInfo property in properties)
+                {
+                    Type sqlFieldType = dataReader.GetFieldType(dataReaderColumn);
+                    if (property.PropertyType != sqlFieldType)
+                        throw new Exception($"Property {property.Name} does not match datatype {dataReader.GetFieldType(dataReaderColumn)}");
+                    
+                    if (dataReader.IsDBNull(dataReaderColumn))
+                        continue;
+                    
+                    if (property.PropertyType == typeof(string))
+                    {
+                        property.SetValue(instance, dataReader.GetString(dataReaderColumn));
+                    }
+                    else if (property.PropertyType == typeof(int))
+                    {
+                        property.SetValue(instance, dataReader.GetInt32(dataReaderColumn));
+                    }
+                    else if (property.PropertyType == typeof(long))
+                    {
+                        property.SetValue(instance, dataReader.GetInt64(dataReaderColumn));
+                    }
+                    dataReaderColumn++;
+                }
+                list.Add(instance);
+            }
+        }
+        return list;
+    }
+    static void ExecuteStatement(string sql, Dictionary<string, object?>? parameters = null)
+    {
+        using SqliteConnection connection = new(connectionString);
+        connection.Open();
+        SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        if (parameters != null)
+        {
+            foreach ((string column, object? value) in parameters)
+            {
+                command.Parameters.AddWithValue(column, value);
+            }
+        }
         command.ExecuteNonQuery();
     }
 
@@ -35,6 +85,38 @@ public static class ORM
             Console.WriteLine($"Could not create table for '{type.Name}'. Unhandled exception {e}");    
         }
         return false;
+    }
+
+
+    public static List<T> Select<T>()
+    {
+        Type type = typeof(T);
+        StringBuilder sql = new();
+        PropertyInfo[] properties = type.GetProperties();
+        string propertyList = string.Join("`,`",properties.Select(p => p.Name).ToList());
+        sql.Append($"SELECT `{propertyList}` FROM {type.Name}");
+        return ExecuteQuery<T>(sql.ToString());
+    }
+    public static void Update(object record)
+    {
+        StringBuilder sql = new();
+        Type type = record.GetType();
+        Dictionary<string, object?> parameters = new();
+        PropertyInfo? primaryKeyProperty = null;
+        sql.Append($"UPDATE {type.Name} SET ");
+        foreach (PropertyInfo propertyInfo in type.GetProperties())
+        {
+            if (IsPrimaryKeyCandidate(propertyInfo.Name) && primaryKeyProperty == null)
+                primaryKeyProperty = propertyInfo;
+            sql.Append($"`{propertyInfo.Name}`=@{propertyInfo.Name},");
+            parameters.Add(propertyInfo.Name, propertyInfo.GetValue(record));
+        }
+        sql = new(sql.ToString().Trim(',', ' '));
+        if (primaryKeyProperty == null)
+            throw new Exception($"Cannot update: Missing primary key on type {type.Name}");
+    
+        sql.Append($"WHERE {primaryKeyProperty.Name}=@Id");
+        ExecuteStatement(sql.ToString(), parameters);
     }
     /// <summary>
     /// Generates CREATE TABLE sql by reflecting a type
@@ -78,7 +160,7 @@ public static class ORM
     {
         if (type == typeof(string))
             return "TEXT";
-        else if (type == typeof(int))
+        else if (type == typeof(int) || type == typeof(long) || type == typeof(short))
             return "INTEGER";
         else if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
         {
