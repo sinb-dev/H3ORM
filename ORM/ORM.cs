@@ -7,7 +7,41 @@ public static class ORM
 {
     static string connectionString = "";
     public static void SetConnectionString(string connStr) => connectionString = connStr;
+    public static List<T> ExecuteQuery<T>(string sql)
+    {
+        using SqliteConnection connection = new(connectionString);
+        connection.Open();
+        SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        SqliteDataReader dataReader = command.ExecuteReader();
 
+        List<T> list = new();
+        while (dataReader.Read())
+        {
+            T? instance = (T?) Activator.CreateInstance(typeof(T));
+            if (instance != null)
+            {
+                PropertyInfo[] properties = instance.GetType().GetProperties();
+                int dataReaderColumn = 0;
+                foreach (PropertyInfo property in properties)
+                {
+                    Type sqlFieldType = dataReader.GetFieldType(dataReaderColumn);
+                    if (property.PropertyType != sqlFieldType)
+                        throw new Exception($"Property {property.Name} does not match datatype {dataReader.GetFieldType(dataReaderColumn)}");
+                    if (property.PropertyType == typeof(string))
+                    {
+                        property.SetValue(instance, dataReader.GetString(dataReaderColumn));
+                    }
+                    else if (property.PropertyType == typeof(int))
+                    {
+                        property.SetValue(instance, dataReader.GetInt32(dataReaderColumn));
+                    }
+                }
+                list.Add(instance);
+            }
+        }
+        return list;
+    }
     static void ExecuteStatement(string sql)
     {
         using SqliteConnection connection = new(connectionString);
@@ -35,6 +69,18 @@ public static class ORM
             Console.WriteLine($"Could not create table for '{type.Name}'. Unhandled exception {e}");    
         }
         return false;
+    }
+
+
+    public static List<T> Select<T>()
+    {
+        Type type = typeof(T);
+        StringBuilder sql = new();
+        PropertyInfo[] properties = type.GetProperties();
+        string propertyList = string.Join("`,`",properties.Select(p => p.Name).ToList());
+        sql.Append($"SELECT `{propertyList}` FROM {type.Name}");
+        return ExecuteQuery<T>(sql.ToString());
+
     }
     /// <summary>
     /// Generates CREATE TABLE sql by reflecting a type
