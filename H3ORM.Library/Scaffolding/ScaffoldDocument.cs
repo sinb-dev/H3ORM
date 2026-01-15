@@ -14,16 +14,15 @@ public class ScaffoldDocument
         string propertiesString = "";
         foreach (ScaffoldProperty property in Properties)
         {
-            string defaultValue = string.IsNullOrEmpty(property.DefaultValue) ? "\"\"" : property.DefaultValue;
-            propertiesString += $@"{property.AccessModifier} {property.DataType} {property.Name} {{ get; set; }} = {defaultValue};";
+            propertiesString += property.ToString()+"\n";
         }
         string documentString = $@"{Usings}
-    namespace {Namespace};
+namespace {Namespace};
 
-    public class {ClassName}
-    {{
-        {propertiesString}
-    }}";
+public class {ClassName}
+{{
+{propertiesString}
+}}";
         return documentString;
     }
 
