@@ -2,7 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using Microsoft.Data.Sqlite;
-namespace H3ORM.ORM;
+namespace H3ORM.Library;
 
 public static class ORM
 {
